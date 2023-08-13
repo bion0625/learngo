@@ -51,17 +51,18 @@ import (
 )
 
 func main() {
-	c := make(chan bool)
-	people := [2]string{"UJ", "flynn"}
+	c := make(chan string)
+	people := [4]string{"UJ", "flynn","a","b"}
 	for _, person := range people {
 		go isSexy(person, c)
 	}
-	fmt.Println(<- c)
-	fmt.Println(<- c)
+	fmt.Println("Waiting for message")
+	for i:=0;i<len(people);i++{
+		fmt.Println(<-c)
+	}
 }
 
-func isSexy(person string, c chan bool) {
+func isSexy(person string, c chan string) {
 	time.Sleep(time.Second * 5)
-	fmt.Println(person)
-	c <- true
+	c <- person + "is sexy"
 }
