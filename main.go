@@ -1,49 +1,58 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"strconv"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
-type requestResult struct{
-	url string
-	status string
-}
-
-var errorRequestFailed = errors.New("Request Failed")
+var baseURL string = "https://www.jobkorea.co.kr/recruit/joblist?menucode=local&localorder=1"
+// var baseURL string = "https://www.jobkorea.co.kr/recruit/joblist?menucode=local&localorder=1#anchorGICnt_1"
 
 func main() {
-	results := make(map[string]string)
-	c := make(chan requestResult)
-	urls := []string{
-		"https://www.airbnb.co.kr/",
-		"https://www.google.com/",
-		"https://www.amazon.com/",
-		"https://www.reddit.com/",
-		"https://soundcloud.com/",
-		"https://www.facebook.com/",
-		"https://www.instagram.com/",
-		"https://nomadcoders.co/",
-	}
-	for _, url := range urls {
-		go hitURL(url, c)
-	}
-	for i:=0;i<len(urls);i++{
-		result := <-c
-		results[result.url] = result.status
-	}
-	for url, status := range results {
-		fmt.Println(url, status)
+	totalPages := getPages()
+
+	for i := 0; i < totalPages; i++ {
+		getPage(i)
 	}
 }
 
-func hitURL(url string, c chan requestResult) {
-	resp, err := http.Get(url)
-	status := "OK"
-	if err != nil || resp.StatusCode >= 400 {
-		fmt.Println(err, resp.StatusCode)
-		status = "FAILED"
+func getPage(page int){
+	pageURL := baseURL + "#anchorGICnt_" + strconv.Itoa(page + 1)
+	fmt.Println("Requesting", pageURL)
+}
+
+func getPages() int {
+	pages := 0
+
+	res, err := http.Get(baseURL)
+	checkError(err)
+	checkStatusCode(res)
+
+	defer res.Body.Close()
+
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	checkError(err)
+
+	doc.Find("#dvGIPaging").Each(func(i int, s *goquery.Selection) {
+		pages = s.Find("a").Length()
+	})
+
+	return pages
+
+}
+
+func checkError(err error) {
+	if err != nil {
+		log.Fatalln(err)
 	}
-	c <- requestResult{url:url, status: status}
+}
+
+func checkStatusCode(res *http.Response) {
+	if res.StatusCode != 200 {
+		log.Fatalln("Request failed with Status:", res.StatusCode)
+	}
 }
