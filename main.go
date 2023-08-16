@@ -22,11 +22,17 @@ type extractedJob struct {
 }
 
 func main() {
+	var c = make(chan []extractedJob)
+
 	var jobs []extractedJob
 	totalPages := getPages()
 
 	for i := 0; i < totalPages; i++ {
-		extractedJobs := getPage(i)
+		go getPage(i, c)
+	}
+	
+	for i :=0; i< totalPages; i++ {
+		extractedJobs := <- c
 		jobs = append(jobs, extractedJobs...)
 	}
 
@@ -34,26 +40,9 @@ func main() {
 	fmt.Println("Done, extracted", len(jobs))
 }
 
-func writeJobs(jobs []extractedJob) {
-	file, err := os.Create("jobs.csv")
-	checkError(err)
+func getPage(page int, mainC chan<- []extractedJob){
+	var c = make(chan extractedJob)
 
-	w := csv.NewWriter(file)
-	defer w.Flush()
-
-	headers := []string{"LINK", "TITLE", "LOCATION", "SUMMARY"}
-
-	wErr := w.Write(headers)
-	checkError(wErr)
-
-	for _, job := range jobs {
-		jobSlice := []string{"https://www.jobkorea.co.kr/Recruit/GI_Read/"+strings.TrimSpace(job.id)+"?rPageCode=AM&logpath=21", job.title, job.location, job.summary}
-		jwErr := w.Write(jobSlice)
-		checkError(jwErr)
-	}
-}
-
-func getPage(page int) []extractedJob {
 	var jobs []extractedJob
 
 	pageURL := baseURL + "#anchorGICnt_" + strconv.Itoa(page+1)
@@ -70,14 +59,16 @@ func getPage(page int) []extractedJob {
 	searchCard := doc.Find(".devloopArea")
 
 	searchCard.Each(func(i int, s *goquery.Selection) {
-		job := extractJob(s)
-		jobs = append(jobs, job)
+		go extractJob(s, c)
 	})
-
-	return jobs
+	for i:=0;i<searchCard.Length();i++{
+		job := <-c
+		jobs = append(jobs, job)
+	}
+	mainC <- jobs
 }
 
-func extractJob(s *goquery.Selection) extractedJob {
+func extractJob(s *goquery.Selection, c chan<- extractedJob){
 	info, _ := s.Attr("data-info")
 	infoValueList := strings.Split(info, "|")
 	id := infoValueList[0]
@@ -94,7 +85,7 @@ func extractJob(s *goquery.Selection) extractedJob {
 	location = cleanString(location)
 	summary = cleanString(summary)
 
-	return extractedJob{
+	c <- extractedJob{
 		id:       id,
 		title:    title,
 		location: location,
@@ -124,6 +115,25 @@ func getPages() int {
 
 	return pages
 
+}
+
+func writeJobs(jobs []extractedJob) {
+	file, err := os.Create("jobs.csv")
+	checkError(err)
+
+	w := csv.NewWriter(file)
+	defer w.Flush()
+
+	headers := []string{"LINK", "TITLE", "LOCATION", "SUMMARY"}
+
+	wErr := w.Write(headers)
+	checkError(wErr)
+
+	for _, job := range jobs {
+		jobSlice := []string{"https://www.jobkorea.co.kr/Recruit/GI_Read/"+strings.TrimSpace(job.id)+"?rPageCode=AM&logpath=21", job.title, job.location, job.summary}
+		jwErr := w.Write(jobSlice)
+		checkError(jwErr)
+	}
 }
 
 func checkError(err error) {
