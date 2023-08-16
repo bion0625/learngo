@@ -5,24 +5,83 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 )
 
 var baseURL string = "https://www.jobkorea.co.kr/recruit/joblist?menucode=local&localorder=1"
-// var baseURL string = "https://www.jobkorea.co.kr/recruit/joblist?menucode=local&localorder=1#anchorGICnt_1"
+
+type extractedJob struct {
+	id string
+	title string
+	location string
+	summary string
+}
 
 func main() {
+	var jobs []extractedJob
 	totalPages := getPages()
 
 	for i := 0; i < totalPages; i++ {
-		getPage(i)
+		extractedJobs := getPage(i)
+		jobs = append(jobs, extractedJobs...)
+	}
+
+	fmt.Println(jobs)
+}
+
+func getPage(page int) []extractedJob {
+	var jobs []extractedJob
+
+	pageURL := baseURL + "#anchorGICnt_" + strconv.Itoa(page + 1)
+	fmt.Println("Requesting", pageURL)
+	res, err := http.Get(pageURL)
+	checkError(err)
+	checkStatusCode(res)
+
+	defer res.Body.Close()
+
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	checkError(err)
+
+	searchCard := doc.Find(".devloopArea")
+
+	searchCard.Each(func(i int, s *goquery.Selection){
+		job := extractJob(s)
+		jobs = append(jobs, job)
+	})
+
+	return jobs
+}
+
+func extractJob(s *goquery.Selection) extractedJob {
+	info, _ := s.Attr("data-info")
+	infoValueList := strings.Split(info, "|")
+	id := infoValueList[0]
+	title, _ := s.Find(".tplTit .normalLog").Attr("title")
+	location := ""
+	s.Find(".cell").Each(func(i int, cellInfo *goquery.Selection){
+		if i == 2 {
+			location = cellInfo.Text()
+		}
+	})
+	summary := s.Find(".dsc").Text()
+
+	title = cleanString(title)
+	location = cleanString(location)
+	summary = cleanString(summary)
+
+	return extractedJob{
+		id: id, 
+		title: title, 
+		location: location, 
+		summary: summary,
 	}
 }
 
-func getPage(page int){
-	pageURL := baseURL + "#anchorGICnt_" + strconv.Itoa(page + 1)
-	fmt.Println("Requesting", pageURL)
+func cleanString(str string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(str)), " ")
 }
 
 func getPages() int {
